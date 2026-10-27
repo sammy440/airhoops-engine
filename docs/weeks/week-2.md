@@ -30,7 +30,7 @@ IndexedDB persistence, live speed graph, smoothing sliders with raw comparison, 
 
 ## File format
 
-Single clip (`throw_2026-10-24_09-41-07_3fa2.json`) — README §7.1 plus metadata:
+Single clip (`throw_2026-10-24_09-41-07_3fa2.json`): landmarks per frame plus metadata.
 
 ```json
 {

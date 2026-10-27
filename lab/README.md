@@ -16,7 +16,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
    Aim for ~20 throws and ~20 non-throws (wave, scratch head, idle, catch).
 2. **Download all** and drop the file(s) into `lab/recordings/`. Bundles and single clips both work;
    duplicates are ignored by recording id.
-3. Evaluate the detector against the Week 3 targets (≥90% throws detected, <10% false triggers):
+3. Evaluate the detector against the targets (≥90% throws detected, <10% false triggers):
    ```bash
    .venv/bin/python -m airhoops_lab.evaluate          # current params
    .venv/bin/python -m airhoops_lab.evaluate --tune   # grid search (needs ≥5 clips per class)
