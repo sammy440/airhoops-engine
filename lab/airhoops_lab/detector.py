@@ -1,5 +1,5 @@
 """
-Throw detector state machine (README §5.4, adapted to real recordings).
+Throw detector state machine.
 
 Mirror of airhoops-frontend/src/lib/pose/throwDetector.ts — the TypeScript
 version is the source of truth for the game; this port exists so thresholds
@@ -46,7 +46,7 @@ class Params:
     windup_height: float = -0.1  # wrist this high and slow → WINDUP
     windup_max_speed: float = 1.5
     pickup_memory_ms: float = 2500
-    # Power mapping (Week 5 replaces with per-player calibration)
+    # Power mapping (uncalibrated default)
     # First recordings peaked at 2.2–3.2 torso/s, so 1.5–5 maps them to ~20–50%.
     power_min_speed: float = 1.5
     power_max_speed: float = 5.0

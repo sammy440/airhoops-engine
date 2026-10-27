@@ -1,5 +1,5 @@
 """
-Optional learned throw classifier (README Week 3, stretch goal).
+Optional learned throw classifier.
 
 Slides a window over each clip, summarizes kinematics into a feature vector,
 and uses the clip label as a weak label for every window that contains a

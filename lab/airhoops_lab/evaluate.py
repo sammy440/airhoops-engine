@@ -4,7 +4,7 @@ Evaluate and tune the throw detector on labeled recordings.
     python -m airhoops_lab.evaluate          # metrics with current PARAMS
     python -m airhoops_lab.evaluate --tune   # grid search (needs enough data)
 
-Targets (README Week 3): ≥90% of throws detected, <10% of non-throws trigger.
+Targets: ≥90% of throws detected, <10% of non-throws trigger.
 """
 
 from __future__ import annotations

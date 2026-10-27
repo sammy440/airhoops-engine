@@ -1,6 +1,6 @@
 """
 Python port of the browser pipeline (airhoops-frontend/src/lib/pose):
-One Euro smoothing → square units → shoulder-width normalized kinematics.
+One Euro smoothing → square units → torso-normalized kinematics.
 Keep the constants in sync with the TypeScript versions.
 """
 

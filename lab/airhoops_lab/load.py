@@ -10,7 +10,7 @@ import numpy as np
 
 RECORDINGS_DIR = Path(__file__).resolve().parent.parent / "recordings"
 
-# Landmark indices stored by the recorder (README §7.1).
+# Landmark indices stored by the recorder.
 L_SHOULDER, R_SHOULDER = 11, 12
 L_ELBOW, R_ELBOW = 13, 14
 L_WRIST, R_WRIST = 15, 16
