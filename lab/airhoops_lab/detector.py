@@ -29,14 +29,19 @@ class Params:
     set_window_ms: float = 300
     max_set_speed: float = 1.2  # torso/s, median over the set window
     # Validating a release
-    min_peak_speed: float = 2.0  # torso/s
-    min_extension: float = 0.62  # torso, arm reach at release
+    min_peak_speed: float = 1.8  # torso/s
+    # 2D reach: a push towards the camera looks shorter than it is, so keep this modest.
+    min_extension: float = 0.5  # torso, arm reach at release
     min_extension_gain: float = 0.12  # torso, reach gained during the throw
-    min_release_height: float = 0.4  # torso, wrist clearly above the shoulder (real throws ≥ 0.63)
+    min_release_height: float = 0.4  # torso, wrist clearly above the shoulder (practised throws ≥ 0.63)
     min_angle: float = 5.0  # degrees above horizontal: shots go up; sideways swipes are waves
+    # Beginners push from the chest: a lower release counts if it goes clearly up.
+    # The waves that pass a lower height alone move at 11–22°, so they still fail.
+    low_release_height: float = 0.0  # torso, wrist at least level with the shoulder
+    low_release_min_angle: float = 30.0  # degrees
     # Ending THROW
     extension_drop: float = 0.04  # torso below max → released
-    speed_drop_ratio: float = 0.45  # speed below this × peak → released
+    speed_drop_ratio: float = 0.7  # speed below this × peak → released (fires ~30 ms sooner than 0.45)
     min_throw_ms: float = 100  # real throws take ≥ ~100 ms; shorter = raising hands into position
     max_throw_ms: float = 900  # timeout back to IDLE
     lookback_ms: float = 400  # window to find the starting (minimum) extension
@@ -164,8 +169,11 @@ class ThrowDetector:
             th.peak_speed >= p.min_peak_speed
             and th.ext_max >= p.min_extension
             and th.ext_max - th.ext_start >= p.min_extension_gain
-            and th.height_at_max >= p.min_release_height
             and angle >= p.min_angle
+            and (
+                th.height_at_max >= p.min_release_height
+                or (th.height_at_max >= p.low_release_height and angle >= p.low_release_min_angle)
+            )
         )
         if not valid:
             self.state = "IDLE"

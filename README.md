@@ -40,7 +40,7 @@ or distance from the camera.
 ```
 IDLE ⇄ PICKUP ⇄ WINDUP          (informational: where the hand is)
   └─(arm extending fast, wrist ≥ ~shoulder)─► THROW
-THROW ─(reach peaks or speed collapses)─► validate ─► ThrowEvent
+THROW ─(reach peaks or speed falls to 70% of peak)─► validate ─► ThrowEvent
 COOLDOWN ─(800 ms)─► IDLE        THROW ─(> 900 ms)─► IDLE
 ```
 
@@ -49,23 +49,37 @@ A throw only counts if it looks like a shot, not a gesture:
 | Rule | Value | Rejects |
 |---|---|---|
 | Set point: hand nearly still just before | median speed ≤ 1.2 torso/s over 300 ms | waving |
-| Peak wrist speed | ≥ 2.0 torso/s | slow reaches |
-| Reach at release / reach gained | ≥ 0.62 / ≥ 0.12 torso | flicks, small pushes |
-| Release height | wrist ≥ 0.4 torso above the shoulder | hand raises, scratching your head |
+| Peak wrist speed | ≥ 1.8 torso/s | slow reaches |
+| Reach at release / reach gained | ≥ 0.5 / ≥ 0.12 torso | flicks, small pushes |
+| Release height | wrist ≥ 0.4 torso above the shoulder, **or** ≥ shoulder level going up ≥ 30° (beginner chest push) | hand raises, scratching your head, low waves |
 | Direction | ≥ 5° above horizontal | sideways swipes |
 | Duration | 100–900 ms | raising hands into position, stalls |
 
 Thresholds live in `lab/airhoops_lab/detector.py` (`Params`) and in the frontend's
 `src/lib/pose/throwDetector.ts` (`DEFAULT_THROW_PARAMS`). They must stay identical; the parity fixtures enforce it.
 
+### Dribbling
+
+A hand patting up and down at least 0.3 torso below its shoulder bounces the ball (frontend
+`src/lib/pose/dribbleDetector.ts`, either hand): a downward stroke of ≥ 1.0 torso/s and ≥ 0.1 torso of travel
+that turns back up is one bounce; bounces 300–1000 ms apart are a dribble. When both hands pat on the same
+beat (common: the first dribble recording swings both wrists ~0.5 torso per beat, in step) it's one bounce,
+and the ball stays in the hand it was already in. It's cosmetic (the ball drops to the
+floor and back in time with the player's rhythm) and can't fire a shot: throws need a still hand first, and
+dribbling never pauses. Movement in that low zone also doesn't count towards choosing the throwing hand, so
+dribbling with one hand and shooting with the other works. Checked against one 18 s dribble recording (the
+frontend replays it in `dribbleDetector.test.ts`, and it's a non-throw clip in every evaluation). More
+**Dribble** clips from other people, rooms and speeds are the next step.
+
 ### Current results
 
-On the recordings in `lab/recordings/` (6 labelled clips: 4 throw, 2 non-throw):
+On the recordings in `lab/recordings/` (7 labelled clips: 4 throw, 3 non-throw: wave, scratch head, dribble):
 
 | Metric | Result | Target |
 |---|---|---|
 | Throw clips detected | 4 / 4 (100%) | ≥ 90% |
-| Non-throw clips that triggered | 0 / 2 (0%) | < 10% |
+| Non-throw clips that triggered | 0 / 3 (0%) | < 10% |
+| Dribble pats bounced (steady part of the dribble clip) | 16 / 16, each within 250 ms | |
 
 That's a small dataset. More recordings (especially different rooms, lighting, clothing and left-handed
 shooters) are the most useful contribution you can make. See below.
@@ -89,7 +103,7 @@ Full workflow (recording, tuning, exporting parity fixtures): [`lab/README.md`](
 ## Contributing recordings
 
 1. Open the [Tracking Lab](https://airhoops.vercel.app/lab) (or `/lab` on a local frontend).
-2. Pick a label with keys **1–5** (throw, wave, scratch head, idle, catch) and press **R** to record.
+2. Pick a label with keys **1–6** (throw, wave, scratch head, idle, catch, dribble) and press **R** to record.
    About 20 throws and 20 non-throws per session is ideal.
 3. Press **Download all** and add the JSON file to `lab/recordings/` in a pull request.
 

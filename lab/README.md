@@ -12,7 +12,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ## Workflow
 
-1. Record clips in the frontend at `/lab` (keys **1–5** pick the label, **R** records).
+1. Record clips in the frontend at `/lab` (keys **1–6** pick the label, **R** records).
    Aim for ~20 throws and ~20 non-throws (wave, scratch head, idle, catch).
 2. **Download all** and drop the file(s) into `lab/recordings/`. Bundles and single clips both work;
    duplicates are ignored by recording id.
