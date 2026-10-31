@@ -10,6 +10,14 @@ never drops below the hip (players hold the "ball" at head height and push),
 so PICKUP is tracked but not required. The reliable release signature is:
 the arm extends with the wrist at/above shoulder height, then extension peaks
 and/or speed falls away.
+
+A second trigger, the elbow snap, catches pushes towards the camera, which look
+short in 2D (little reach gained): both hands hold the ball overhead with the
+elbow bent and still, then the elbow straightens quickly and the wrist rises.
+
+Power comes from the arm's speed relative to the shoulders; a jump (the
+shoulders rising fast just before release) adds to it, so jumping throws further
+but isn't needed to throw.
 """
 
 from __future__ import annotations
@@ -51,10 +59,28 @@ class Params:
     windup_height: float = -0.1  # wrist this high and slow → WINDUP
     windup_max_speed: float = 1.5
     pickup_memory_ms: float = 2500
-    # Power mapping (uncalibrated default)
+    # Power mapping (uncalibrated default), from the arm's speed relative to the shoulders.
     # First recordings peaked at 2.2–3.2 torso/s, so 1.5–5 maps them to ~20–50%.
     power_min_speed: float = 1.5
     power_max_speed: float = 5.0
+    # Elbow snap: from a held two-handed set overhead, the elbow straightens fast.
+    # Lab, Oct 31: recall on the aimed clips 72% → 94%, still no trigger on head
+    # scratching or dribbling; one on a two-handed overhead wave.
+    snap_bent: float = 150  # deg, elbow at most this bent at the set …
+    snap_straight: float = 145  # … then at least this straight
+    snap_set_height: float = 0.2  # torso, both wrists at least this far above the shoulders at the set
+    snap_release_height: float = 0.35  # torso, shooting wrist at release
+    snap_max_hands_apart: float = 0.8  # torso, both hands on the ball at the set
+    snap_min_rise: float = 0.03  # torso, wrist rises from set to release
+    snap_min_rate: float = 80  # deg/s of elbow opening
+    snap_window_ms: float = 500  # how far back to look for the set
+    snap_hold_ms: float = 200  # the hand is still (median speed ≤ max_set_speed) for this long before the set
+    # Jump: peak shoulder rise in the last jump_window_ms. Standing throws rose 0.2–0.8 torso/s,
+    # jumping ones 1.4–2.7.
+    jump_min_rise: float = 0.8
+    jump_full_rise: float = 2.4
+    jump_window_ms: float = 500
+    jump_power: float = 0.2  # power added by a full jump (uncalibrated)
 
 
 PARAMS = Params()
@@ -68,6 +94,9 @@ class ThrowEvent:
     arc: float  # 0..1
     hand: str
     peak_speed: float
+    arm_speed: float  # peak wrist speed relative to the shoulders
+    jump: float  # 0..1
+    lean: float | None  # shoulders over hips at release, torso lengths (None if not visible)
     extension: float
     height: float
     picked_up: bool
@@ -84,6 +113,23 @@ class _Throw:
     vx_sum: float = 0.0
     vy_sum: float = 0.0
     t_max: float = 0.0
+    arm_peak: float = 0.0
+
+
+@dataclass
+class _Frame:
+    t: float
+    elbow: float
+    height: float
+    other_height: float  # NaN if not visible
+    hands_apart: float  # NaN unless both wrists visible
+    speed: float
+    arm_speed: float
+    rise: float
+    vx: float
+    vy: float
+    extension: float
+    lean: float
 
 
 def _clamp01(x: float) -> float:
@@ -99,6 +145,7 @@ class ThrowDetector:
     _last_pickup_t: float = -1e9
     _hist: list[tuple[float, float]] = field(default_factory=list)  # (t, extension)
     _speeds: list[tuple[float, float]] = field(default_factory=list)  # (t, speed) for the set check
+    _recent: list[_Frame] = field(default_factory=list)  # visible frames, for the elbow snap and jump
     # False after a timeout until the wrist slows down, so THROW can't re-trigger every frame.
     _armed: bool = True
 
@@ -110,6 +157,15 @@ class ThrowDetector:
             return None
 
         ext, height, speed = f["extension"], f["above_shoulder"], f["speed"]
+        body_vx, body_vy = f.get("body_vx", 0.0), f.get("body_vy", 0.0)
+        arm_speed = float(np.hypot(f["vx"] - body_vx, f["vy"] - body_vy))
+        self._recent.append(
+            _Frame(t, f.get("elbow", np.nan), height, f.get("other_above_shoulder", np.nan), f.get("hands_apart", np.nan),
+                   speed, arm_speed, -body_vy, f["vx"], f["vy"], ext, f.get("lean", np.nan))
+        )
+        keep = max(p.snap_window_ms + p.snap_hold_ms, p.jump_window_ms)
+        while self._recent and t - self._recent[0].t > keep:
+            self._recent.pop(0)
         self._hist.append((t, ext))
         while self._hist and t - self._hist[0][0] > p.lookback_ms:
             self._hist.pop(0)
@@ -135,6 +191,10 @@ class ThrowDetector:
             if self._armed and settled and speed >= p.start_speed and height >= p.min_height_start and ext > prev_ext:
                 self._throw = _Throw(t_start=t, ext_start=min(e for _, e in self._hist))
                 self.state = "THROW"
+            elif (ev := self._snap(t, hand)) is not None:
+                self.state = "COOLDOWN"
+                self._cooldown_until = t + p.cooldown_ms
+                return ev
             elif f["below_hip"] > p.pickup_below_hip:
                 self.state = "PICKUP"
             elif height >= p.windup_height and speed < p.windup_max_speed:
@@ -148,6 +208,14 @@ class ThrowDetector:
         assert th is not None
         if speed > th.peak_speed:
             th.peak_speed = speed
+        th.arm_peak = max(th.arm_peak, arm_speed)
+        # A snap can complete while the reach-based throw is still deciding (pushes towards the camera
+        # often start it, then fail its reach-gained check): take the snap.
+        if (ev := self._snap(t, hand)) is not None:
+            self._throw = None
+            self.state = "COOLDOWN"
+            self._cooldown_until = t + p.cooldown_ms
+            return ev
         if ext >= th.ext_max:
             th.ext_max, th.height_at_max, th.t_max = ext, height, t
         th.vx_sum += f["vx"]
@@ -181,18 +249,93 @@ class ThrowDetector:
 
         self.state = "COOLDOWN"
         self._cooldown_until = t + p.cooldown_ms
+        jump = self._jump(t)
         return ThrowEvent(
             t=t,
-            power=_clamp01((th.peak_speed - p.power_min_speed) / (p.power_max_speed - p.power_min_speed)),
+            power=self._power(th.arm_peak, jump),
             angle=angle,
             arc=_clamp01((th.height_at_max + 0.2) / 1.2),
             hand=hand,
             peak_speed=th.peak_speed,
+            arm_speed=th.arm_peak,
+            jump=jump,
+            lean=self._lean(),
             extension=th.ext_max,
             height=th.height_at_max,
             picked_up=t - self._last_pickup_t <= p.pickup_memory_ms,
             duration_ms=elapsed,
         )
+
+
+    # ── Elbow snap and jump ──
+
+    def _jump(self, t: float) -> float:
+        """0..1: how fast the shoulders rose in the last jump_window_ms (a jump into the shot)."""
+        p = self.params
+        rise = max((r.rise for r in self._recent if r.t >= t - p.jump_window_ms), default=0.0)
+        return _clamp01((rise - p.jump_min_rise) / (p.jump_full_rise - p.jump_min_rise))
+
+    def _lean(self) -> float | None:
+        lean = self._recent[-1].lean
+        return float(lean) if np.isfinite(lean) else None
+
+    def _power(self, arm_speed: float, jump: float) -> float:
+        p = self.params
+        return _clamp01((arm_speed - p.power_min_speed) / (p.power_max_speed - p.power_min_speed) + p.jump_power * jump)
+
+    def _snap(self, t: float, hand: str) -> ThrowEvent | None:
+        """The current frame ends an elbow snap from a held two-handed set overhead → a throw."""
+        p = self.params
+        k = self._recent[-1]
+        if not (k.elbow >= p.snap_straight and k.height >= p.snap_release_height):
+            return None
+        window = [r for r in self._recent[:-1] if r.t >= t - p.snap_window_ms and np.isfinite(r.elbow)]
+        if len(window) < 2:
+            return None
+        j = min(window, key=lambda r: r.elbow)  # the set: most bent (first if tied)
+        if j.elbow > p.snap_bent or j.height < p.snap_set_height:
+            return None
+        # Both hands on the ball (NaN, i.e. not visible, fails these)
+        if not (j.other_height >= p.snap_set_height and j.hands_apart <= p.snap_max_hands_apart):
+            return None
+        if k.height - j.height < p.snap_min_rise:
+            return None
+        seg = [r for r in self._recent if r.t >= j.t]
+        peak = max(r.speed for r in seg)
+        if peak < p.min_peak_speed:
+            return None
+        if (k.elbow - j.elbow) / max(1.0, t - j.t) * 1000 < p.snap_min_rate:
+            return None
+        if _median([r.speed for r in self._recent if j.t - p.snap_hold_ms <= r.t <= j.t]) > p.max_set_speed:
+            return None
+        vx = sum(r.vx for r in seg)
+        vy = sum(r.vy for r in seg)
+        angle = float(np.degrees(np.arctan2(-vy, abs(vx)))) if (vx or vy) else 0.0
+        if angle < p.min_angle:
+            return None
+        arm_peak = max(r.arm_speed for r in seg)
+        jump = self._jump(t)
+        return ThrowEvent(
+            t=t,
+            power=self._power(arm_peak, jump),
+            angle=angle,
+            arc=_clamp01((k.height + 0.2) / 1.2),
+            hand=hand,
+            peak_speed=peak,
+            arm_speed=arm_peak,
+            jump=jump,
+            lean=self._lean(),
+            extension=k.extension,
+            height=k.height,
+            picked_up=t - self._last_pickup_t <= p.pickup_memory_ms,
+            duration_ms=t - j.t,
+        )
+
+
+def _median(values: list[float]) -> float:
+    """Upper median, like the TS port (sorted[n // 2])."""
+    v = sorted(values)
+    return v[len(v) // 2]
 
 
 def run(features: pd.DataFrame, hand: str, params: Params = PARAMS) -> tuple[list[ThrowEvent], list[str]]:

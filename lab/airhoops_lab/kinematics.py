@@ -95,7 +95,11 @@ def arm_features(clip: Clip, side: str | None = None, lm: np.ndarray | None = No
     Columns: t, speed, vx, vy (torso lengths/s, image orientation, +y down),
     angle (deg above horizontal), elbow (deg), extension (× torso),
     above_shoulder (torso, + = wrist above shoulder), below_hip (torso, + = wrist below hip),
-    scale (torso length, square units), visible.
+    scale (torso length, square units), visible,
+    other_above_shoulder (the other wrist, NaN if not visible), hands_apart (wrist to wrist, torso;
+    NaN unless both wrists are visible), body_vx / body_vy (shoulder midpoint velocity, torso/s,
+    image orientation; 0 while the shoulders aren't visible), lean (shoulder midpoint sideways
+    from the hip midpoint, torso lengths, image x; NaN unless shoulders and hips are visible).
     """
     side = side or clip.hand
     lm = smooth(clip) if lm is None else lm
@@ -162,6 +166,38 @@ def arm_features(clip: Clip, side: str | None = None, lm: np.ndarray | None = No
     speed = np.hypot(vx, vy)
     angle = np.where(speed > 0, np.degrees(np.arctan2(-vy, np.abs(vx))), 0.0)
 
+    # The other arm (KinematicsTracker computes both arms every frame).
+    os_i, _, ow_i, _ = ARM["left" if side == "right" else "right"]
+    OS, OW = sq(os_i), sq(ow_i)
+    other_vis = ok(ow_i) & ok(os_i) & np.isfinite(sw)
+    other_above = np.where(other_vis, (OS[:, 1] - OW[:, 1]) / sw, np.nan)
+    hands_apart = np.where(vis & other_vis, np.linalg.norm(W - OW, axis=1) / sw, np.nan)
+
+    # Lean: the shoulders shifted sideways over the hips (the aim control).
+    lean = np.where(shoulders_ok & hips_ok & np.isfinite(sw), ((LS[:, 0] + RS[:, 0]) / 2 - (LH[:, 0] + RH[:, 0]) / 2) / sw, np.nan)
+
+    # Body velocity: shoulder midpoint, same finite difference as the wrist, history cleared
+    # whenever the shoulders are lost (TS: KinematicsTracker.bodyHistory).
+    M = (LS + RS) / 2
+    body_ok = shoulders_ok & np.isfinite(sw)
+    bvx = np.zeros(len(clip.t))
+    bvy = np.zeros(len(clip.t))
+    seg_start = 0
+    for k in range(len(clip.t)):
+        if not body_ok[k]:
+            seg_start = k + 1
+            continue
+        if k == seg_start:
+            continue
+        j = k - 1
+        while j > seg_start and clip.t[k] - clip.t[j] < VELOCITY_WINDOW_MS:
+            j -= 1
+        dt = (clip.t[k] - clip.t[j]) / 1000
+        if dt <= 0:
+            continue
+        bvx[k] = (M[k, 0] - M[j, 0]) / dt / sw[k]
+        bvy[k] = (M[k, 1] - M[j, 1]) / dt / sw[k]
+
     return pd.DataFrame(
         {
             "t": clip.t,
@@ -175,5 +211,10 @@ def arm_features(clip: Clip, side: str | None = None, lm: np.ndarray | None = No
             "below_hip": (W[:, 1] - H[:, 1]) / sw,
             "scale": sw,
             "visible": vis,
+            "other_above_shoulder": other_above,
+            "hands_apart": hands_apart,
+            "body_vx": bvx,
+            "body_vy": bvy,
+            "lean": lean,
         }
     )

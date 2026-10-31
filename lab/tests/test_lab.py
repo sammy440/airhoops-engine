@@ -73,7 +73,10 @@ def test_clean_throw_matches_typescript_expectations():
     ev = clean_throw(det, 0)
     assert ev is not None
     p = det.params
-    assert abs(ev.power - (4 - p.power_min_speed) / (p.power_max_speed - p.power_min_speed)) < 1e-9
+    # Power from the arm's peak velocity (no body motion here, so all of it is the arm's)
+    arm = np.hypot(2.5, 3)
+    assert abs(ev.arm_speed - arm) < 1e-9 and ev.jump == 0
+    assert abs(ev.power - (arm - p.power_min_speed) / (p.power_max_speed - p.power_min_speed)) < 1e-9
     assert abs(ev.arc - 0.7 / 1.2) < 1e-9
     assert ev.angle > 40
     assert det.state == "COOLDOWN"
