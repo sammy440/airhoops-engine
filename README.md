@@ -55,6 +55,26 @@ A throw only counts if it looks like a shot, not a gesture:
 | Direction | ≥ 5° above horizontal | sideways swipes |
 | Duration | 100–900 ms | raising hands into position, stalls |
 
+**Elbow snap**, a second way to count a throw. A push towards the camera barely gains reach in 2D, so it
+also counts when, from a still two-handed set overhead, the elbow straightens fast:
+
+| Rule | Value | Rejects |
+|---|---|---|
+| Set: elbow bent, both hands up and together, hand still | elbow ≤ 150°, both wrists ≥ 0.2 torso above the shoulders, ≤ 0.8 torso apart, median speed ≤ 1.2 torso/s for 200 ms | one-handed waves and head scratches, waving (never pauses) |
+| Snap: elbow straight, wrist up and rising | elbow ≥ 145° within 500 ms, opening ≥ 80°/s, wrist ≥ 0.35 torso above the shoulder and rising | raising the hands into the set |
+| A real push | peak wrist speed ≥ 1.8 torso/s, going up (≥ 5°) | elbow jitter while holding the set |
+
+On the Oct 31 aimed clips it took recall from 72% to 94% (30 of 32 throws); head scratching and dribbling still
+never trigger; a two-handed overhead wave triggers once.
+
+**Power and jump.** Power comes from the arm's speed *relative to the shoulders*; a jump (shoulders rising faster
+than 0.8 torso/s, full at 2.4, in the half-second before release) adds to it. Standing throws rose 0.2–0.8,
+jumping ones 1.4–2.7. So jumping isn't needed to throw, but jumping harder than in calibration throws further.
+
+**Aim.** Lean: the shoulders shifted sideways over the hips at release, against the player's own straight lean
+(calibration). Dead zone 0.01 torso, 100° of launch aim per torso, ±12°. Turning the body (MediaPipe depth) was
+tried first and dropped: ±30° of noise standing square, and left/right swap when side-on.
+
 Thresholds live in `lab/airhoops_lab/detector.py` (`Params`) and in the frontend's
 `src/lib/pose/throwDetector.ts` (`DEFAULT_THROW_PARAMS`). They must stay identical; the parity fixtures enforce it.
 
